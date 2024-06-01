@@ -17,6 +17,11 @@
   ],
   "author": "reeceyang",
   "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/reeceyang/convex-schema-mermaid"
+  },
+  "homepage": "https://github.com/reeceyang/convex-schema-mermaid#readme",
   "dependencies": {
     "convex": "^1.12.1",
     "typescript": "^5.4.5"
