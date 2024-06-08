@@ -58,3 +58,33 @@ test.todo("nested objects with link fields", () => {
     b: defineTable({}),
   });
 });
+
+test.todo("nested union of literals", () => {
+  const schema = defineSchema({
+    filterExpressions: defineTable(
+      v.union(
+        v.object({
+          type: v.literal("and"),
+          filters: v.array(v.id("filterExpressions")),
+        }),
+        v.object({
+          type: v.literal("or"),
+          filters: v.array(v.id("filterExpressions")),
+        }),
+        v.object({
+          type: v.literal("where"),
+          fieldId: v.id("firestoreFields"),
+          operator: v.union(v.literal("=="), v.literal("not-in")),
+          value: v.any(),
+        })
+      )
+    ),
+  });
+  console.log(schemaToMermaid(schema));
+});
+
+test.skip("no typescript errors for strict table name types", () => {
+  const schema = defineSchema({}, { strictTableNameTypes: false });
+
+  console.log(schemaToMermaid(schema));
+});

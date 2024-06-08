@@ -100,7 +100,7 @@ const objectToSubgraph = (
   const fieldNodes = Object.entries(object)
     .map(([fieldName, { fieldType }]) => {
       const node = fieldTypeToNode(fieldName, fieldType, subgraphNames);
-      if (fieldType.type === "object") {
+      if (fieldType.type === "object" || fieldType.type === "union") {
         return node;
       }
       return `    ${subgraphNames.join(".")}.${fieldName}[${node}]`;
@@ -116,7 +116,12 @@ const unionToSubgraph = (
 ): string => {
   const elementNodes = union
     .map((fieldType, i) => {
-      return fieldTypeToNode(`union.${i}`, fieldType, subgraphNames);
+      const node = fieldTypeToNode(`union.${i}`, fieldType, subgraphNames);
+      if (fieldType.type === "object" || fieldType.type === "union") {
+        return node;
+      }
+      // TODO: maybe we should just pretend union elements are object fields
+      return `    ${subgraphNames.join(".")}.${`union.${i}`}[${node}]`;
     })
     .join("\n");
 
@@ -153,24 +158,29 @@ const flattenObjectFields = (
 };
 const flattenUnionElements = (
   union: ValidatorJSON[],
-  ancestorNames: string[]
+  ancestorNames: [...string[], string]
 ): Node[] => {
   return union.flatMap((fieldType, i) => {
     switch (fieldType.type) {
       case "object":
         return flattenObjectFields(fieldType.value, [
           ...ancestorNames,
-          `union${i}`,
+          `union.${i}`,
         ]);
       case "union":
         return flattenUnionElements(fieldType.value, [
           ...ancestorNames,
-          `union${i}`,
+          `union.${i}`,
         ]);
       default:
-        throw new Error(
-          "A union type table definition should only contain object or union types"
-        );
+        return {
+          name: ancestorNames[ancestorNames.length - 1],
+          type: fieldType.type,
+          ancestorNames,
+          ...(fieldType.type === "id" && {
+            linkedTableName: fieldType.tableName,
+          }),
+        };
     }
   });
 };
@@ -182,7 +192,7 @@ const flattenUnionElements = (
  * @returns Mermaid flowchart representation of the schema
  */
 export const schemaToMermaid = (
-  schema: SchemaDefinition<GenericSchema, true>
+  schema: SchemaDefinition<GenericSchema, any>
 ): string => {
   const subgraphs = Object.entries(schema.tables)
     .map(([tableName, _table]) => {
