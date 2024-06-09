@@ -37,22 +37,7 @@ type TableDefinitionWithDocumentType = Omit<TableDefinition, "documentType"> & {
   documentType: ValidatorWithJson;
 };
 
-// interface Node {
-//   name: string;
-//   type: ValidatorJSON["type"];
-//   ancestors: (ObjectSubgraph | UnionSubgraph)[];
-// }
-
-// interface ObjectSubgraph extends Node {
-//   type: "object";
-//   fields: Node[];
-// }
-
-// interface UnionSubgraph extends Node {
-//   type: "union";
-//   elements: Node[];
-// }
-
+/** append a `?` to the field name if it is optional */
 const fieldNameToSubgraphName = (fieldName: string, optional: boolean) =>
   optional ? `${fieldName}?` : fieldName;
 
@@ -136,6 +121,9 @@ const unionToPretendObject = (
     union.map((fieldType, i) => [`union.${i}`, { fieldType, optional: false }])
   );
 
+/**
+ * Generate a Mermaid subgraph representation of a union.
+ */
 const unionToSubgraph = (
   union: ValidatorJSON[],
   subgraphNames: [string, ...string[]]
@@ -152,6 +140,9 @@ const arrayToPretendObject = (
   "array.0": { fieldType: array, optional: false },
 });
 
+/**
+ * Generate a Mermaid subgraph representation of an array.
+ */
 const arrayToSubgraph = (
   array: ValidatorJSON,
   subgraphNames: [string, ...string[]]
@@ -159,12 +150,20 @@ const arrayToSubgraph = (
   return objectToSubgraph(arrayToPretendObject(array), subgraphNames);
 };
 
+/**
+ * A node in the Mermaid flowchart representation of a schema.
+ */
 interface Node {
   name: string;
   type: ValidatorJSON["type"];
   ancestorNames: string[];
+  /** defined iff this is a link node */
   linkedTableName?: string;
 }
+
+/**
+ * Return a list of all fields nested in an object as nodes.
+ */
 const flattenObjectFields = (
   object: Record<string, ObjectFieldType>,
   ancestorNames: string[]
@@ -197,6 +196,7 @@ const flattenObjectFields = (
     }
   );
 };
+
 const flattenUnionElements = (
   union: ValidatorJSON[],
   ancestorNames: [...string[], string]
@@ -206,6 +206,7 @@ const flattenArrayElement = (
   array: ValidatorJSON,
   ancestorNames: [...string[], string]
 ): Node[] => flattenObjectFields(arrayToPretendObject(array), ancestorNames);
+
 /**
  * Generate a Mermaid flowchart representation from a Convex schema.
  *
@@ -220,7 +221,6 @@ export const schemaToMermaid = (
       const table = _table as unknown as TableDefinitionWithDocumentType;
       const documentType = table.documentType;
 
-      // TODO: can we just use fieldTypeToNode here?
       switch (documentType.json.type) {
         case "object":
           return objectToSubgraph(documentType.json.value, [tableName]);
@@ -230,13 +230,13 @@ export const schemaToMermaid = (
 
         default:
           throw new Error(
-            "Only object and union table definition types are supported"
+            "Only object and union table definition types are supported, " +
+              `but ${tableName} has type ${documentType.json.type}`
           );
       }
     })
     .join("");
 
-  // TODO: some repeated code from above
   const links = Object.entries(schema.tables)
     .flatMap(([tableName, _table]) => {
       const table = _table as unknown as TableDefinitionWithDocumentType;
@@ -250,7 +250,8 @@ export const schemaToMermaid = (
 
         default:
           throw new Error(
-            "Only object and union table definition types are supported"
+            "Only object and union table definition types are supported, " +
+              `but ${tableName} has type ${documentType.json.type}`
           );
       }
     })
