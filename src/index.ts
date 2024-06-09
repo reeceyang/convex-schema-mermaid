@@ -104,11 +104,15 @@ const objectToSubgraph = (
         // don't wrap with []
         return node;
       }
-      return `    ${ancestorNames.join(".")}.${subgraphName}[${node}]`;
+      return `${ancestorNames.join(".")}.${subgraphName}[${node}]`;
     })
     .join("\n");
 
-  return `  subgraph ${ancestorNames.join(".")}[${ancestorNames.at(-1)}]\n${fieldNodes}\n  end\n`;
+  return [
+    `subgraph ${ancestorNames.join(".")}[${ancestorNames.at(-1)}]`,
+    `${fieldNodes}`,
+    `end\n`,
+  ].join("\n");
 };
 
 /**
@@ -259,9 +263,37 @@ export const schemaToMermaid = (
     .map(
       // TODO: maybe linkedTableName could be statically guaranteed to exist
       ({ name, ancestorNames, linkedTableName }): string =>
-        `  ${ancestorNames.join(".")}.${name}-->${linkedTableName}`
+        `${ancestorNames.join(".")}.${name}-->${linkedTableName}`
     )
     .join("\n");
 
-  return `flowchart LR\n${subgraphs}${links}`;
+  return applyIndentation([`flowchart LR`, `${subgraphs}${links}`].join("\n"));
+};
+
+/**
+ * Indents subgraphs by 2 spaces for each level of nesting and removes empty
+ * lines.
+ *
+ * @param mermaidStr string representation of a mermaid flowchart
+ * @returns mermaid flowchart string with indentation applied
+ */
+const applyIndentation = (mermaidStr: string) => {
+  const lines = mermaidStr.split("\n");
+  let indents = 0;
+  const indentedLines = [];
+  for (const line of lines) {
+    if (!line) {
+      continue;
+    }
+    if (line.startsWith("flowchart") || line.startsWith("subgraph")) {
+      indentedLines.push(" ".repeat(indents) + line);
+      indents += 2;
+    } else if (line.startsWith("end")) {
+      indents -= 2;
+      indentedLines.push(" ".repeat(indents) + line);
+    } else {
+      indentedLines.push(" ".repeat(indents) + line);
+    }
+  }
+  return indentedLines.join("\n");
 };

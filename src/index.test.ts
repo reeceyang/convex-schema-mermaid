@@ -3,9 +3,9 @@ import { v } from "convex/values";
 import { expect, test } from "vitest";
 import { schemaToMermaid } from ".";
 
-// These are all essentially snapshot tests at the moment
+// These are all essentially snapshot tests
 
-test("schemaToMermaid", () => {
+test("tables with no nested objects", () => {
   const schema = defineSchema({
     messages: defineTable({
       authorId: v.id("users"),
@@ -37,15 +37,27 @@ test("schemaToMermaid", () => {
   expect(schemaToMermaid(schema)).toBe(mermaid);
 });
 
-test.todo("table defined as union of objects", () => {
+test("table defined as union of objects", () => {
   const schema = defineSchema({
     test: defineTable(
       v.union(v.object({ name: v.string() }), v.object({ age: v.number() }))
     ),
   });
+
+  const mermaid = `flowchart LR
+  subgraph test[test]
+    subgraph test.union.0[union.0]
+      test.union.0.name[name: string]
+    end
+    subgraph test.union.1[union.1]
+      test.union.1.age[age: number]
+    end
+  end`;
+
+  expect(schemaToMermaid(schema)).toBe(mermaid);
 });
 
-test.todo("nested objects with link fields", () => {
+test("nested objects with link fields", () => {
   const schema = defineSchema({
     a: defineTable({
       object1: v.object({
@@ -57,6 +69,22 @@ test.todo("nested objects with link fields", () => {
     }),
     b: defineTable({}),
   });
+
+  const mermaid = `flowchart LR
+  subgraph a[a]
+    subgraph a.object1[object1]
+      subgraph a.object1.object2[object2]
+        a.object1.object2.bId[bId: id 'b']
+      end
+      a.object1.bId[bId: id 'b']
+    end
+  end
+  subgraph b[b]
+  end
+  a.object1.object2.bId-->b
+  a.object1.bId-->b`;
+
+  expect(schemaToMermaid(schema)).toBe(mermaid);
 });
 
 test("nested union of literals", () => {
@@ -80,7 +108,35 @@ test("nested union of literals", () => {
       )
     ),
   });
-  console.log(schemaToMermaid(schema));
+  const mermaid = `flowchart LR
+  subgraph filterExpressions[filterExpressions]
+    subgraph filterExpressions.union.0[union.0]
+      filterExpressions.union.0.type[type: literal 'and']
+      subgraph filterExpressions.union.0.filters[filters]
+        filterExpressions.union.0.filters.array.0[array.0: id 'filterExpressions']
+      end
+    end
+    subgraph filterExpressions.union.1[union.1]
+      filterExpressions.union.1.type[type: literal 'or']
+      subgraph filterExpressions.union.1.filters[filters]
+        filterExpressions.union.1.filters.array.0[array.0: id 'filterExpressions']
+      end
+    end
+    subgraph filterExpressions.union.2[union.2]
+      filterExpressions.union.2.type[type: literal 'where']
+      filterExpressions.union.2.fieldId[fieldId: id 'firestoreFields']
+      subgraph filterExpressions.union.2.operator[operator]
+        filterExpressions.union.2.operator.union.0[union.0: literal '==']
+        filterExpressions.union.2.operator.union.1[union.1: literal 'not-in']
+      end
+      filterExpressions.union.2.value[value: any]
+    end
+  end
+  filterExpressions.union.0.filters.array.0-->filterExpressions
+  filterExpressions.union.1.filters.array.0-->filterExpressions
+  filterExpressions.union.2.fieldId-->firestoreFields`;
+
+  expect(schemaToMermaid(schema)).toBe(mermaid);
 });
 
 test("array with linked tables", () => {
@@ -91,7 +147,24 @@ test("array with linked tables", () => {
     }),
     b: defineTable({}),
   });
-  console.log(schemaToMermaid(schema));
+
+  const mermaid = `flowchart LR
+  subgraph a[a]
+    subgraph a.field1[field1]
+      a.field1.array.0[array.0: id 'b']
+    end
+    subgraph a.field2[field2]
+      subgraph a.field2.array.0[array.0]
+        a.field2.array.0.bId[bId: id 'b']
+      end
+    end
+  end
+  subgraph b[b]
+  end
+  a.field1.array.0-->b
+  a.field2.array.0.bId-->b`;
+
+  expect(schemaToMermaid(schema)).toBe(mermaid);
 });
 
 test("optional link and object fields", () => {
@@ -102,11 +175,22 @@ test("optional link and object fields", () => {
     }),
     b: defineTable({}),
   });
-  console.log(schemaToMermaid(schema));
+
+  const mermaid = `flowchart LR
+  subgraph a[a]
+    a.field1?[field1?: id 'b']
+    subgraph a.field2?[field2?]
+      a.field2?.bId[bId: id 'b']
+    end
+  end
+  subgraph b[b]
+  end
+  a.field1?-->b
+  a.field2?.bId-->b`;
+
+  expect(schemaToMermaid(schema)).toBe(mermaid);
 });
 
-test.skip("no typescript errors for strict table name types", () => {
-  const schema = defineSchema({}, { strictTableNameTypes: false });
-
-  console.log(schemaToMermaid(schema));
+test("no typescript errors for strict table name types", () => {
+  defineSchema({}, { strictTableNameTypes: false });
 });
