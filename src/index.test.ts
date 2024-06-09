@@ -59,7 +59,7 @@ test.todo("nested objects with link fields", () => {
   });
 });
 
-test.todo("nested union of literals", () => {
+test("nested union of literals", () => {
   const schema = defineSchema({
     filterExpressions: defineTable(
       v.union(
@@ -79,6 +79,17 @@ test.todo("nested union of literals", () => {
         })
       )
     ),
+  });
+  console.log(schemaToMermaid(schema));
+});
+
+test("array with linked tables", () => {
+  const schema = defineSchema({
+    a: defineTable({
+      field1: v.array(v.id("b")),
+      field2: v.array(v.object({ bId: v.id("b") })),
+    }),
+    b: defineTable({}),
   });
   console.log(schemaToMermaid(schema));
 });

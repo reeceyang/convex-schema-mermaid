@@ -65,11 +65,14 @@ const fieldTypeToNode = (
   fieldType: ValidatorJSON,
   subgraphNames: [string, ...string[]]
 ) => {
+  // TODO: handle optional fields
   switch (fieldType.type) {
     case "object":
       return objectToSubgraph(fieldType.value, [...subgraphNames, fieldName]);
     case "union":
       return unionToSubgraph(fieldType.value, [...subgraphNames, fieldName]);
+    case "array":
+      return arrayToSubgraph(fieldType.value, [...subgraphNames, fieldName]);
     case "id":
       return linkFieldToNode(fieldName, fieldType.tableName);
     default:
@@ -100,7 +103,12 @@ const objectToSubgraph = (
   const fieldNodes = Object.entries(object)
     .map(([fieldName, { fieldType }]) => {
       const node = fieldTypeToNode(fieldName, fieldType, subgraphNames);
-      if (fieldType.type === "object" || fieldType.type === "union") {
+      if (
+        fieldType.type === "object" ||
+        fieldType.type === "union" ||
+        fieldType.type === "array"
+      ) {
+        // don't wrap with []
         return node;
       }
       return `    ${subgraphNames.join(".")}.${fieldName}[${node}]`;
@@ -110,22 +118,37 @@ const objectToSubgraph = (
   return `  subgraph ${subgraphNames.join(".")}[${subgraphNames.at(-1)}]\n${fieldNodes}\n  end\n`;
 };
 
+/**
+ * Pretend a union is an object with fields named `union.0`, `union.1`, etc.
+ */
+const unionToPretendObject = (
+  union: ValidatorJSON[]
+): Record<string, ObjectFieldType> =>
+  Object.fromEntries(
+    union.map((fieldType, i) => [`union.${i}`, { fieldType, optional: false }])
+  );
+
 const unionToSubgraph = (
   union: ValidatorJSON[],
   subgraphNames: [string, ...string[]]
 ): string => {
-  const elementNodes = union
-    .map((fieldType, i) => {
-      const node = fieldTypeToNode(`union.${i}`, fieldType, subgraphNames);
-      if (fieldType.type === "object" || fieldType.type === "union") {
-        return node;
-      }
-      // TODO: maybe we should just pretend union elements are object fields
-      return `    ${subgraphNames.join(".")}.${`union.${i}`}[${node}]`;
-    })
-    .join("\n");
+  return objectToSubgraph(unionToPretendObject(union), subgraphNames);
+};
 
-  return `  subgraph ${subgraphNames.join(".")}[${subgraphNames.at(-1)}]\n${elementNodes}\n  end\n`;
+/**
+ * Pretend an array is an object with a field named `array.0`
+ */
+const arrayToPretendObject = (
+  array: ValidatorJSON
+): Record<string, ObjectFieldType> => ({
+  "array.0": { fieldType: array, optional: false },
+});
+
+const arrayToSubgraph = (
+  array: ValidatorJSON,
+  subgraphNames: [string, ...string[]]
+): string => {
+  return objectToSubgraph(arrayToPretendObject(array), subgraphNames);
 };
 
 interface Node {
@@ -144,6 +167,8 @@ const flattenObjectFields = (
         return flattenObjectFields(fieldType.value, [...ancestorNames, name]);
       case "union":
         return flattenUnionElements(fieldType.value, [...ancestorNames, name]);
+      case "array":
+        return flattenArrayElement(fieldType.value, [...ancestorNames, name]);
       default:
         return {
           name,
@@ -159,32 +184,12 @@ const flattenObjectFields = (
 const flattenUnionElements = (
   union: ValidatorJSON[],
   ancestorNames: [...string[], string]
-): Node[] => {
-  return union.flatMap((fieldType, i) => {
-    switch (fieldType.type) {
-      case "object":
-        return flattenObjectFields(fieldType.value, [
-          ...ancestorNames,
-          `union.${i}`,
-        ]);
-      case "union":
-        return flattenUnionElements(fieldType.value, [
-          ...ancestorNames,
-          `union.${i}`,
-        ]);
-      default:
-        return {
-          name: ancestorNames[ancestorNames.length - 1],
-          type: fieldType.type,
-          ancestorNames,
-          ...(fieldType.type === "id" && {
-            linkedTableName: fieldType.tableName,
-          }),
-        };
-    }
-  });
-};
+): Node[] => flattenObjectFields(unionToPretendObject(union), ancestorNames);
 
+const flattenArrayElement = (
+  array: ValidatorJSON,
+  ancestorNames: [...string[], string]
+): Node[] => flattenObjectFields(arrayToPretendObject(array), ancestorNames);
 /**
  * Generate a Mermaid flowchart representation from a Convex schema.
  *
