@@ -2,7 +2,17 @@
 
 Generate a Mermaid flowchart from a Convex schema
 
+Install the package from NPM:
+
+```sh
+npm i convex-schema-mermaid
+```
+
+Import the `schemaToMermaid` and pass in your schema:
+
 ```ts
+import { schemaToMermaid } from "convex-schema-mermaid";
+
 const schema = defineSchema({
   messages: defineTable({
     authorId: v.id("users"),
@@ -32,4 +42,12 @@ console.log(schemaToMermaid(schema));
 //   end
 //   messages.authorId-->users
 //   users.teamId-->teams
+```
+
+To use with your Convex project, you can place the `console.log(schemaToMermaid(schema))` inside a Convex function and then run that function from the Convex dashboard.
+
+You can also run this one-liner from the root directory of your project, which will bundle and run your schema with a script to print the mermaid output:
+
+```sh
+echo "import s from './convex/schema';import {schemaToMermaid} from 'convex-schema-mermaid';console.log(schemaToMermaid(s))" | npx esbuild --bundle | node
 ```
