@@ -94,6 +94,17 @@ test("array with linked tables", () => {
   console.log(schemaToMermaid(schema));
 });
 
+test("optional link and object fields", () => {
+  const schema = defineSchema({
+    a: defineTable({
+      field1: v.optional(v.id("b")),
+      field2: v.optional(v.object({ bId: v.id("b") })),
+    }),
+    b: defineTable({}),
+  });
+  console.log(schemaToMermaid(schema));
+});
+
 test.skip("no typescript errors for strict table name types", () => {
   const schema = defineSchema({}, { strictTableNameTypes: false });
 

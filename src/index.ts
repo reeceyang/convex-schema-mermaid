@@ -53,6 +53,9 @@ type TableDefinitionWithDocumentType = Omit<TableDefinition, "documentType"> & {
 //   elements: Node[];
 // }
 
+const fieldNameToSubgraphName = (fieldName: string, optional: boolean) =>
+  optional ? `${fieldName}?` : fieldName;
+
 const literalToNode = (fieldName: string, value: JSONValue) =>
   `${fieldToNode(fieldName, "literal")} '${value}'`;
 
@@ -68,7 +71,6 @@ const fieldTypeToNode = (
   fieldType: ValidatorJSON,
   subgraphNames: [string, ...string[]]
 ) => {
-  // TODO: handle optional fields
   switch (fieldType.type) {
     case "object":
       return objectToSubgraph(fieldType.value, [...subgraphNames, fieldName]);
@@ -98,16 +100,17 @@ const fieldTypeToNode = (
  * end
  * ```
  * @param object the validator json value for the object
- * @param subgraphNames a list of subgraph ancestor names
+ * @param ancestorNames a list of subgraph ancestor names
  * @returns a mermaid subgraph representation of the object
  */
 const objectToSubgraph = (
   object: Record<string, ObjectFieldType>,
-  subgraphNames: [string, ...string[]]
+  ancestorNames: [string, ...string[]]
 ): string => {
   const fieldNodes = Object.entries(object)
-    .map(([fieldName, { fieldType }]) => {
-      const node = fieldTypeToNode(fieldName, fieldType, subgraphNames);
+    .map(([fieldName, { fieldType, optional }]) => {
+      const subgraphName = fieldNameToSubgraphName(fieldName, optional);
+      const node = fieldTypeToNode(subgraphName, fieldType, ancestorNames);
       if (
         fieldType.type === "object" ||
         fieldType.type === "union" ||
@@ -116,11 +119,11 @@ const objectToSubgraph = (
         // don't wrap with []
         return node;
       }
-      return `    ${subgraphNames.join(".")}.${fieldName}[${node}]`;
+      return `    ${ancestorNames.join(".")}.${subgraphName}[${node}]`;
     })
     .join("\n");
 
-  return `  subgraph ${subgraphNames.join(".")}[${subgraphNames.at(-1)}]\n${fieldNodes}\n  end\n`;
+  return `  subgraph ${ancestorNames.join(".")}[${ancestorNames.at(-1)}]\n${fieldNodes}\n  end\n`;
 };
 
 /**
@@ -166,25 +169,33 @@ const flattenObjectFields = (
   object: Record<string, ObjectFieldType>,
   ancestorNames: string[]
 ): Node[] => {
-  return Object.entries(object).flatMap(([name, { fieldType }]) => {
-    switch (fieldType.type) {
-      case "object":
-        return flattenObjectFields(fieldType.value, [...ancestorNames, name]);
-      case "union":
-        return flattenUnionElements(fieldType.value, [...ancestorNames, name]);
-      case "array":
-        return flattenArrayElement(fieldType.value, [...ancestorNames, name]);
-      default:
-        return {
-          name,
-          type: fieldType.type,
-          ancestorNames,
-          ...(fieldType.type === "id" && {
-            linkedTableName: fieldType.tableName,
-          }),
-        };
+  return Object.entries(object).flatMap(
+    ([fieldName, { fieldType, optional }]): Node[] => {
+      const name = fieldNameToSubgraphName(fieldName, optional);
+      switch (fieldType.type) {
+        case "object":
+          return flattenObjectFields(fieldType.value, [...ancestorNames, name]);
+        case "union":
+          return flattenUnionElements(fieldType.value, [
+            ...ancestorNames,
+            name,
+          ]);
+        case "array":
+          return flattenArrayElement(fieldType.value, [...ancestorNames, name]);
+        default:
+          return [
+            {
+              name,
+              type: fieldType.type,
+              ancestorNames,
+              ...(fieldType.type === "id" && {
+                linkedTableName: fieldType.tableName,
+              }),
+            },
+          ];
+      }
     }
-  });
+  );
 };
 const flattenUnionElements = (
   union: ValidatorJSON[],
