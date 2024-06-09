@@ -53,6 +53,9 @@ type TableDefinitionWithDocumentType = Omit<TableDefinition, "documentType"> & {
 //   elements: Node[];
 // }
 
+const literalToNode = (fieldName: string, value: JSONValue) =>
+  `${fieldToNode(fieldName, "literal")} '${value}'`;
+
 const fieldToNode = (fieldName: string, fieldType: string) =>
   `${fieldName}: ${fieldType}`;
 
@@ -73,6 +76,8 @@ const fieldTypeToNode = (
       return unionToSubgraph(fieldType.value, [...subgraphNames, fieldName]);
     case "array":
       return arrayToSubgraph(fieldType.value, [...subgraphNames, fieldName]);
+    case "literal":
+      return literalToNode(fieldName, fieldType.value);
     case "id":
       return linkFieldToNode(fieldName, fieldType.tableName);
     default:
