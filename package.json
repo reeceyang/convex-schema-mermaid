@@ -1,6 +1,6 @@
 {
   "name": "convex-schema-mermaid",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Generate a Mermaid flowchart from a Convex schema",
   "main": "lib/index.js",
   "files": [
@@ -23,7 +23,7 @@
   },
   "homepage": "https://github.com/reeceyang/convex-schema-mermaid#readme",
   "dependencies": {
-    "convex": "^1.12.1",
+    "convex": "^1.13.0",
     "typescript": "^5.4.5"
   },
   "devDependencies": {

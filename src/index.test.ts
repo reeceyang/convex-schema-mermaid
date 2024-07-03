@@ -25,7 +25,7 @@ test("tables with no nested objects", () => {
   end
   subgraph users[users]
     users.name[name: string]
-    users.age[age: number]
+    users.age[age: float64]
     users.teamId[teamId: id 'teams']
   end
   subgraph teams[teams]
@@ -50,7 +50,7 @@ test("table defined as union of objects", () => {
       test.union.0.name[name: string]
     end
     subgraph test.union.1[union.1]
-      test.union.1.age[age: number]
+      test.union.1.age[age: float64]
     end
   end`;
 

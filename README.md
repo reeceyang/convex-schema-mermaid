@@ -8,7 +8,7 @@ Install the package from NPM:
 npm i convex-schema-mermaid
 ```
 
-Import the `schemaToMermaid` and pass in your schema:
+Import the `schemaToMermaid` function and pass in your schema:
 
 ```ts
 import { schemaToMermaid } from "convex-schema-mermaid";

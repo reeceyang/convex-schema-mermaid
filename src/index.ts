@@ -1,45 +1,11 @@
-import {
-  GenericSchema,
-  SchemaDefinition,
-  TableDefinition,
-} from "convex/server";
-import { JSONValue, Validator } from "convex/values";
-
-/** internal type copied from convex/values */
-type ObjectFieldType = { fieldType: ValidatorJSON; optional: boolean };
-
-/** internal type copied from convex/values */
-type ValidatorJSON =
-  | {
-      type: "null";
-    }
-  | { type: "number" }
-  | { type: "bigint" }
-  | { type: "boolean" }
-  | { type: "string" }
-  | { type: "bytes" }
-  | { type: "any" }
-  | {
-      type: "literal";
-      value: JSONValue;
-    }
-  | { type: "id"; tableName: string }
-  | { type: "array"; value: ValidatorJSON }
-  | { type: "record"; keys: ValidatorJSON; values: ObjectFieldType }
-  | { type: "object"; value: Record<string, ObjectFieldType> }
-  | { type: "union"; value: ValidatorJSON[] };
-
-/** {@link Validator} with internal `json` field patched in */
-type ValidatorWithJson = Validator<any, any, any> & { json: ValidatorJSON };
-
-/** {@link TableDefinition} with internal `documentType` field patched in */
-type TableDefinitionWithDocumentType = Omit<TableDefinition, "documentType"> & {
-  documentType: ValidatorWithJson;
-};
+import { GenericSchema, SchemaDefinition } from "convex/server";
+import { JSONValue, OptionalProperty, Validator } from "convex/values";
 
 /** append a `?` to the field name if it is optional */
-const fieldNameToSubgraphName = (fieldName: string, optional: boolean) =>
-  optional ? `${fieldName}?` : fieldName;
+const fieldNameToSubgraphName = (
+  fieldName: string,
+  optional: OptionalProperty
+) => (optional === "optional" ? `${fieldName}?` : fieldName);
 
 const literalToNode = (fieldName: string, value: JSONValue) =>
   `${fieldToNode(fieldName, "literal")} '${value}'`;
@@ -50,25 +16,34 @@ const fieldToNode = (fieldName: string, fieldType: string) =>
 const linkFieldToNode = (fieldName: string, tableName: string) =>
   `${fieldToNode(fieldName, "id")} '${tableName}'`;
 
-/** converts a fieldType to a node */
-const fieldTypeToNode = (
+/** converts a field validator to a node */
+const fieldValidatorToNode = (
   fieldName: string,
-  fieldType: ValidatorJSON,
+  fieldValidator: Validator<any, OptionalProperty, any>,
   subgraphNames: [string, ...string[]]
 ) => {
-  switch (fieldType.type) {
+  switch (fieldValidator.kind) {
     case "object":
-      return objectToSubgraph(fieldType.value, [...subgraphNames, fieldName]);
+      return objectToSubgraph(fieldValidator.fields, [
+        ...subgraphNames,
+        fieldName,
+      ]);
     case "union":
-      return unionToSubgraph(fieldType.value, [...subgraphNames, fieldName]);
+      return unionToSubgraph(fieldValidator.members, [
+        ...subgraphNames,
+        fieldName,
+      ]);
     case "array":
-      return arrayToSubgraph(fieldType.value, [...subgraphNames, fieldName]);
+      return arrayToSubgraph(fieldValidator.element, [
+        ...subgraphNames,
+        fieldName,
+      ]);
     case "literal":
-      return literalToNode(fieldName, fieldType.value);
+      return literalToNode(fieldName, fieldValidator.value);
     case "id":
-      return linkFieldToNode(fieldName, fieldType.tableName);
+      return linkFieldToNode(fieldName, fieldValidator.tableName);
     default:
-      return fieldToNode(fieldName, fieldType.type);
+      return fieldToNode(fieldName, fieldValidator.kind);
   }
 };
 
@@ -89,17 +64,24 @@ const fieldTypeToNode = (
  * @returns a mermaid subgraph representation of the object
  */
 const objectToSubgraph = (
-  object: Record<string, ObjectFieldType>,
+  object: Record<string, Validator<any, OptionalProperty, any>>,
   ancestorNames: [string, ...string[]]
 ): string => {
   const fieldNodes = Object.entries(object)
-    .map(([fieldName, { fieldType, optional }]) => {
-      const subgraphName = fieldNameToSubgraphName(fieldName, optional);
-      const node = fieldTypeToNode(subgraphName, fieldType, ancestorNames);
+    .map(([fieldName, fieldValidator]) => {
+      const subgraphName = fieldNameToSubgraphName(
+        fieldName,
+        fieldValidator.isOptional
+      );
+      const node = fieldValidatorToNode(
+        subgraphName,
+        fieldValidator,
+        ancestorNames
+      );
       if (
-        fieldType.type === "object" ||
-        fieldType.type === "union" ||
-        fieldType.type === "array"
+        fieldValidator.kind === "object" ||
+        fieldValidator.kind === "union" ||
+        fieldValidator.kind === "array"
       ) {
         // don't wrap with []
         return node;
@@ -119,39 +101,39 @@ const objectToSubgraph = (
  * Pretend a union is an object with fields named `union.0`, `union.1`, etc.
  */
 const unionToPretendObject = (
-  union: ValidatorJSON[]
-): Record<string, ObjectFieldType> =>
+  unionMembers: Validator<any, OptionalProperty, any>[]
+): Record<string, Validator<any, OptionalProperty, any>> =>
   Object.fromEntries(
-    union.map((fieldType, i) => [`union.${i}`, { fieldType, optional: false }])
+    unionMembers.map((validator, i) => [`union.${i}`, validator])
   );
 
 /**
  * Generate a Mermaid subgraph representation of a union.
  */
 const unionToSubgraph = (
-  union: ValidatorJSON[],
+  unionMembers: Validator<any, OptionalProperty, any>[],
   subgraphNames: [string, ...string[]]
 ): string => {
-  return objectToSubgraph(unionToPretendObject(union), subgraphNames);
+  return objectToSubgraph(unionToPretendObject(unionMembers), subgraphNames);
 };
 
 /**
  * Pretend an array is an object with a field named `array.0`
  */
 const arrayToPretendObject = (
-  array: ValidatorJSON
-): Record<string, ObjectFieldType> => ({
-  "array.0": { fieldType: array, optional: false },
+  arrayElement: Validator<any, OptionalProperty, any>
+): Record<string, Validator<any, OptionalProperty, any>> => ({
+  "array.0": arrayElement,
 });
 
 /**
  * Generate a Mermaid subgraph representation of an array.
  */
 const arrayToSubgraph = (
-  array: ValidatorJSON,
+  arrayElement: Validator<any, OptionalProperty, any>,
   subgraphNames: [string, ...string[]]
 ): string => {
-  return objectToSubgraph(arrayToPretendObject(array), subgraphNames);
+  return objectToSubgraph(arrayToPretendObject(arrayElement), subgraphNames);
 };
 
 /**
@@ -159,7 +141,7 @@ const arrayToSubgraph = (
  */
 interface Node {
   name: string;
-  type: ValidatorJSON["type"];
+  kind: Validator<any, OptionalProperty, any>["kind"];
   ancestorNames: string[];
   /** defined iff this is a link node */
   linkedTableName?: string;
@@ -169,47 +151,44 @@ interface Node {
  * Return a list of all fields nested in an object as nodes.
  */
 const flattenObjectFields = (
-  object: Record<string, ObjectFieldType>,
+  object: Record<string, Validator<any, OptionalProperty, any>>,
   ancestorNames: string[]
 ): Node[] => {
-  return Object.entries(object).flatMap(
-    ([fieldName, { fieldType, optional }]): Node[] => {
-      const name = fieldNameToSubgraphName(fieldName, optional);
-      switch (fieldType.type) {
-        case "object":
-          return flattenObjectFields(fieldType.value, [...ancestorNames, name]);
-        case "union":
-          return flattenUnionElements(fieldType.value, [
-            ...ancestorNames,
+  return Object.entries(object).flatMap(([fieldName, validator]): Node[] => {
+    const name = fieldNameToSubgraphName(fieldName, validator.isOptional);
+    switch (validator.kind) {
+      case "object":
+        return flattenObjectFields(validator.fields, [...ancestorNames, name]);
+      case "union":
+        return flattenUnionMembers(validator.members, [...ancestorNames, name]);
+      case "array":
+        return flattenArrayElement(validator.element, [...ancestorNames, name]);
+      default:
+        return [
+          {
             name,
-          ]);
-        case "array":
-          return flattenArrayElement(fieldType.value, [...ancestorNames, name]);
-        default:
-          return [
-            {
-              name,
-              type: fieldType.type,
-              ancestorNames,
-              ...(fieldType.type === "id" && {
-                linkedTableName: fieldType.tableName,
-              }),
-            },
-          ];
-      }
+            kind: validator.kind,
+            ancestorNames,
+            ...(validator.kind === "id" && {
+              linkedTableName: validator.tableName,
+            }),
+          },
+        ];
     }
-  );
+  });
 };
 
-const flattenUnionElements = (
-  union: ValidatorJSON[],
+const flattenUnionMembers = (
+  unionMembers: Validator<any, OptionalProperty, any>[],
   ancestorNames: [...string[], string]
-): Node[] => flattenObjectFields(unionToPretendObject(union), ancestorNames);
+): Node[] =>
+  flattenObjectFields(unionToPretendObject(unionMembers), ancestorNames);
 
 const flattenArrayElement = (
-  array: ValidatorJSON,
+  arrayElement: Validator<"array", any, any>,
   ancestorNames: [...string[], string]
-): Node[] => flattenObjectFields(arrayToPretendObject(array), ancestorNames);
+): Node[] =>
+  flattenObjectFields(arrayToPretendObject(arrayElement), ancestorNames);
 
 /**
  * Generate a Mermaid flowchart representation from a Convex schema.
@@ -221,45 +200,44 @@ export const schemaToMermaid = (
   schema: SchemaDefinition<GenericSchema, any>
 ): string => {
   const subgraphs = Object.entries(schema.tables)
-    .map(([tableName, _table]) => {
-      const table = _table as unknown as TableDefinitionWithDocumentType;
-      const documentType = table.documentType;
+    .map(([tableName, table]) => {
+      const tableValidator = table.validator;
 
-      switch (documentType.json.type) {
+      switch (tableValidator.kind) {
         case "object":
-          return objectToSubgraph(documentType.json.value, [tableName]);
+          return objectToSubgraph(tableValidator.fields, [tableName]);
 
         case "union":
-          return unionToSubgraph(documentType.json.value, [tableName]);
+          return unionToSubgraph(tableValidator.members, [tableName]);
 
         default:
           throw new Error(
             "Only object and union table definition types are supported, " +
-              `but ${tableName} has type ${documentType.json.type}`
+              `but ${tableName} has type ${tableValidator.kind}`
           );
       }
     })
     .join("");
 
   const links = Object.entries(schema.tables)
-    .flatMap(([tableName, _table]) => {
-      const table = _table as unknown as TableDefinitionWithDocumentType;
-      const documentType = table.documentType;
-      switch (documentType.json.type) {
+    .flatMap(([tableName, table]) => {
+      const tableValidator = table.validator;
+
+      switch (tableValidator.kind) {
         case "object":
-          return flattenObjectFields(documentType.json.value, [tableName]);
+          return flattenObjectFields(tableValidator.fields, [tableName]);
 
         case "union":
-          return flattenUnionElements(documentType.json.value, [tableName]);
+          return flattenUnionMembers(tableValidator.members, [tableName]);
 
         default:
           throw new Error(
             "Only object and union table definition types are supported, " +
-              `but ${tableName} has type ${documentType.json.type}`
+              `but ${tableName} has type ${tableValidator.kind}`
           );
       }
     })
-    .filter(({ type }) => type === "id")
+    .filter(({ kind: type }) => type === "id")
     .map(
       // TODO: maybe linkedTableName could be statically guaranteed to exist
       ({ name, ancestorNames, linkedTableName }): string =>
